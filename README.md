@@ -1,19 +1,47 @@
-# Hide Icons 🖥️
+# Hide Icons Plus 🖥️✨
 
-[![Latest Version](https://img.shields.io/github/v/release/emp0ry/Hide-Icons?label=Latest%20Version&style=flat-square&color=8b5cf6)](https://github.com/emp0ry/Hide-Icons/releases/latest)
-[![Downloads](https://img.shields.io/github/downloads/emp0ry/Hide-Icons/total.svg?style=flat-square&color=8b5cf6&label=Downloads)](https://github.com/emp0ry/Hide-Icons/releases/latest)
-[![License](https://img.shields.io/github/license/emp0ry/Hide-Icons?style=flat-square&color=8b5cf6)](LICENSE.txt)
-[![Buy Me a Coffee](https://img.shields.io/badge/Buy%20Me%20A%20Coffee-Support-FFDD00?style=flat-square&logo=buy-me-a-coffee&logoColor=black)](https://www.buymeacoffee.com/emp0ry)
+[![Latest Version](https://img.shields.io/github/v/release/Thermoptic/Hide-Icons-Plus?label=Latest%20Version&style=flat-square&color=8b5cf6)](https://github.com/Thermoptic/Hide-Icons-Plus/releases/latest)
+[![Downloads](https://img.shields.io/github/downloads/Thermoptic/Hide-Icons-Plus/total.svg?style=flat-square&color=8b5cf6&label=Downloads)](https://github.com/Thermoptic/Hide-Icons-Plus/releases/latest)
+[![License](https://img.shields.io/github/license/Thermoptic/Hide-Icons-Plus?style=flat-square&color=8b5cf6)](LICENSE.txt)
 
-**Hide Icons** is a lightweight Windows tray app to quickly show/hide desktop icons, set a global hotkey, control auto-start, and use a custom tray icon. Runs as a **standard user** (no admin required).
+**Hide Icons Plus** is an enhanced fork of [emp0ry/Hide-Icons](https://github.com/emp0ry/Hide-Icons) — a lightweight Windows tray app to quickly show/hide desktop icons, set a global hotkey, control auto-start, and use a custom tray icon. Runs as a **standard user** (no admin required).
 
-## 🚀 Features
+> All credit for the original app goes to **emp0ry**. This fork adds new features on top of it (see below).
+
+## ✨ New in Hide-Icons-Plus
+
+These features are **new in the Hide-Icons-Plus version** and do not exist in the original Hide Icons:
+
+| Feature | Where | What it does |
+|---|---|---|
+| 🚀 **Hide on Exec** | Right-click tray icon → **Hide on Exec** (checkable) | When desktop icons are visible and you launch something from the desktop — by **double-clicking an icon** or pressing **Enter** on a selected one — the icons are hidden again automatically. |
+| ⏱️ **Countdown Timer** | Right-click tray icon → **Timer** | Opens a small window where you tick **Countdown Timer** and choose a number of **Seconds** (default **30**). Whenever the icons are shown, they are hidden automatically once the time runs out. |
+
+### 🚀 Hide on Exec
+- Enable it from the tray menu; a ✔ appears next to **Hide on Exec** while it is active.
+- Double-clicking empty desktop space does **not** trigger it — only real icons do.
+- Hiding happens a fraction of a second after the launch, so the program you started is never disturbed.
+- The setting is remembered between restarts.
+
+### ⏱️ Countdown Timer
+- Open **Timer**, tick **Countdown Timer**, set the number of seconds (1–86400) and press **OK**.
+- A ✔ appears next to **Timer** in the tray menu while the countdown is active.
+- The countdown starts whenever the icons become visible — via tray click, hotkey, or the desktop's own context menu. If you hide them yourself, the countdown resets.
+- Works together with **Hide on Exec**: whichever happens first hides the icons.
+- Settings are remembered between restarts.
+
+### 🔄 Updates
+The built-in auto-updater now checks **this repository's** [Releases](https://github.com/Thermoptic/Hide-Icons-Plus/releases), so you always get the Plus version.
+
+## 🚀 Features (original + Plus)
 - **One-click toggle** – Left-click the tray icon to show/hide desktop icons.
 - **Hotkey support** – Assign your own shortcut for instant toggling.
 - **Custom tray icon** – Load any `.ico`; auto-adapts to dark/light theme when using the default.
 - **Run at startup** – Enable/disable auto-start with a click.
 - **Persistent settings** – Your choices survive restarts.
 - **Auto-update** – Checks and updates on app start.
+- **Hide on Exec** *(new in Plus)* – Auto-hide icons after launching something from the desktop.
+- **Countdown Timer** *(new in Plus)* – Auto-hide icons after a configurable number of seconds.
 - **No hacks** – Uses the desktop's own command (no poking SysListView32), works on Win10/11.
 
 ## 💻 System Requirements
@@ -25,7 +53,7 @@
 |---|---|---|
 
 ## ⬇️ Install & Run
-1. Download the latest release from [Releases](https://github.com/emp0ry/Hide-Icons/releases).
+1. Download the latest release from [Releases](https://github.com/Thermoptic/Hide-Icons-Plus/releases).
 2. Launch `HideIcons.exe`, and the tray icon appears in the notification area.
 3. **Left-click** the tray icon to toggle icons, **right-click** for the menu.
 
@@ -37,6 +65,8 @@
 Remove via **Remove Hotkey**.
 - **Auto-start**: Right-click → **Run at Startup**.
 - **Custom icon**: Right-click → **Change Icon** / **Reset Icon**.
+- **Hide on Exec** *(Plus)*: Right-click → **Hide on Exec**.
+- **Countdown Timer** *(Plus)*: Right-click → **Timer** → tick **Countdown Timer** → set seconds → **OK**.
 
 ## 🤝 Contributing
 Issues and PRs are welcome! Please describe the environment (Windows version, steps to reproduce) when filing bugs.

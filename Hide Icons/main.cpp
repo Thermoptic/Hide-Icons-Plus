@@ -15,6 +15,8 @@
 #include <ole2.h>
 #pragma comment(lib, "Ole32.lib")
 #pragma comment(lib, "OleAut32.lib")
+#include <oleacc.h>
+#pragma comment(lib, "oleacc.lib")
 
 struct HotkeyConfig {
     UINT hotkey;          // Virtual key code for the hotkey (e.g., VK_F1, VK_A, etc.)
@@ -29,6 +31,19 @@ bool g_isStartup = false;
 HHOOK g_hKeyboardHook = nullptr;
 HotkeyConfig g_hotkey = { 0, 0 }; // Default: no hotkey, no modifier
 std::wstring customIconPath;
+bool g_hideOnExec = false;            // "Hide on Exec" option
+HHOOK g_hMouseHook = nullptr;
+const UINT WM_HIDEONEXEC_CLICK = WM_APP + 2;   // posted by the mouse hook on a desktop double-click
+const UINT_PTR HIDEONEXEC_TIMER = 100;
+const wchar_t* HIDE_ON_EXEC_VALUE_NAME = L"HideOnExec";
+
+// Countdown timer: hide icons automatically after N seconds of being visible
+bool g_timerEnabled = false;
+DWORD g_timerSeconds = 30;
+DWORD g_visibleSinceTick = 0;          // GetTickCount() when icons were first seen visible (0 = hidden)
+const UINT_PTR COUNTDOWN_TIMER = 101;
+const wchar_t* TIMER_ENABLED_VALUE_NAME = L"TimerEnabled";
+const wchar_t* TIMER_SECONDS_VALUE_NAME = L"TimerSeconds";
 
 const wchar_t* APP_NAME = L"Hide Icons";
 const wchar_t* APP_VERSION = L"v1.8.1";
@@ -364,6 +379,40 @@ HWND GetDesktopListView()
     return NULL;
 }
 
+// Are the desktop icons currently visible?
+static bool AreDesktopIconsVisible() {
+    HWND lv = GetDesktopListView();
+    if (lv) return IsWindowVisible(lv) != FALSE;
+    bool vis = true;
+    if (ReadHideIconsReg(vis)) return vis;
+    return true;
+}
+
+// True if the screen point is over an actual icon on the desktop (not empty space)
+static bool IsDesktopItemAt(POINT pt) {
+    HWND lv = GetDesktopListView();
+    if (!lv || WindowFromPoint(pt) != lv) return false;
+
+    bool result = false;
+    HRESULT hr = CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
+    bool needUninit = SUCCEEDED(hr);
+
+    IAccessible* acc = nullptr;
+    VARIANT child; VariantInit(&child);
+    if (SUCCEEDED(AccessibleObjectFromPoint(pt, &acc, &child)) && acc) {
+        if (child.vt == VT_I4 && child.lVal != CHILDID_SELF) {
+            VARIANT role; VariantInit(&role);
+            if (SUCCEEDED(acc->get_accRole(child, &role)) && role.vt == VT_I4 && role.lVal == ROLE_SYSTEM_LISTITEM)
+                result = true;
+            VariantClear(&role);
+        }
+        acc->Release();
+    }
+    VariantClear(&child);
+    if (needUninit) CoUninitialize();
+    return result;
+}
+
 // Function to toggle the visibility of desktop icons
 void ToggleDesktopIcons() {
     HWND defView = GetDefViewByCOM();
@@ -447,10 +496,143 @@ void RemoveTrayIcon() {
     Shell_NotifyIcon(NIM_DELETE, &g_nid);
 }
 
+// Save / load the "Hide on Exec" setting
+void SaveHideOnExec() {
+    HKEY key;
+    if (RegCreateKeyEx(HKEY_CURRENT_USER, SETTINGS_REG_PATH, 0, nullptr, 0, KEY_WRITE, nullptr, &key, nullptr) == ERROR_SUCCESS) {
+        DWORD v = g_hideOnExec ? 1 : 0;
+        RegSetValueEx(key, HIDE_ON_EXEC_VALUE_NAME, 0, REG_DWORD, (const BYTE*)&v, sizeof(v));
+        RegCloseKey(key);
+    }
+}
+
+bool LoadHideOnExec() {
+    DWORD v = 0, size = sizeof(v);
+    return RegGetValueW(HKEY_CURRENT_USER, SETTINGS_REG_PATH, HIDE_ON_EXEC_VALUE_NAME,
+        RRF_RT_REG_DWORD, nullptr, &v, &size) == ERROR_SUCCESS && v != 0;
+}
+
+// Mouse hook: detects a double-click (two left-button presses close in time/space) and
+// hands the work to the main window so the hook itself stays fast.
+LRESULT CALLBACK LowLevelMouseProc(int nCode, WPARAM wParam, LPARAM lParam) {
+    if (nCode == HC_ACTION && wParam == WM_LBUTTONDOWN) {
+        static DWORD lastTime = 0;
+        static POINT lastPt = { -10000, -10000 };
+        MSLLHOOKSTRUCT* ms = (MSLLHOOKSTRUCT*)lParam;
+        bool dbl = (ms->time - lastTime) <= GetDoubleClickTime() &&
+            abs(ms->pt.x - lastPt.x) <= GetSystemMetrics(SM_CXDOUBLECLK) / 2 &&
+            abs(ms->pt.y - lastPt.y) <= GetSystemMetrics(SM_CYDOUBLECLK) / 2;
+        if (dbl) {
+            lastTime = 0; lastPt = { -10000, -10000 };
+            if (HWND hWnd = FindWindow(L"HideIconsTrayApp", nullptr))
+                PostMessage(hWnd, WM_HIDEONEXEC_CLICK, (WPARAM)ms->pt.x, (LPARAM)ms->pt.y);
+        }
+        else {
+            lastTime = ms->time;
+            lastPt = ms->pt;
+        }
+    }
+    return CallNextHookEx(g_hMouseHook, nCode, wParam, lParam);
+}
+
+// Save / load the countdown timer settings
+void SaveTimerSettings() {
+    HKEY key;
+    if (RegCreateKeyEx(HKEY_CURRENT_USER, SETTINGS_REG_PATH, 0, nullptr, 0, KEY_WRITE, nullptr, &key, nullptr) == ERROR_SUCCESS) {
+        DWORD en = g_timerEnabled ? 1 : 0;
+        RegSetValueEx(key, TIMER_ENABLED_VALUE_NAME, 0, REG_DWORD, (const BYTE*)&en, sizeof(en));
+        RegSetValueEx(key, TIMER_SECONDS_VALUE_NAME, 0, REG_DWORD, (const BYTE*)&g_timerSeconds, sizeof(g_timerSeconds));
+        RegCloseKey(key);
+    }
+}
+
+void LoadTimerSettings() {
+    DWORD v = 0, size = sizeof(v);
+    g_timerEnabled = RegGetValueW(HKEY_CURRENT_USER, SETTINGS_REG_PATH, TIMER_ENABLED_VALUE_NAME,
+        RRF_RT_REG_DWORD, nullptr, &v, &size) == ERROR_SUCCESS && v != 0;
+    size = sizeof(v);
+    if (RegGetValueW(HKEY_CURRENT_USER, SETTINGS_REG_PATH, TIMER_SECONDS_VALUE_NAME,
+        RRF_RT_REG_DWORD, nullptr, &v, &size) == ERROR_SUCCESS && v >= 1 && v <= 86400)
+        g_timerSeconds = v;
+}
+
+// Start/stop the 1 s poll that drives the countdown
+void ApplyTimerSetting(HWND hWnd) {
+    g_visibleSinceTick = 0;
+    if (g_timerEnabled) SetTimer(hWnd, COUNTDOWN_TIMER, 1000, nullptr);
+    else KillTimer(hWnd, COUNTDOWN_TIMER);
+}
+
+INT_PTR CALLBACK TimerDialogProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam) {
+    switch (message) {
+    case WM_INITDIALOG: {
+        CheckDlgButton(hWnd, IDC_TIMER_CHECK, g_timerEnabled ? BST_CHECKED : BST_UNCHECKED);
+        SetDlgItemInt(hWnd, IDC_TIMER_EDIT, g_timerSeconds, FALSE);
+        SendDlgItemMessage(hWnd, IDC_TIMER_EDIT, EM_LIMITTEXT, 5, 0);
+        EnableWindow(GetDlgItem(hWnd, IDC_TIMER_EDIT), g_timerEnabled);
+
+        // Position dialog near the cursor, kept inside the work area
+        POINT pt; GetCursorPos(&pt);
+        RECT work, dlg;
+        SystemParametersInfo(SPI_GETWORKAREA, 0, &work, 0);
+        GetWindowRect(hWnd, &dlg);
+        int w = dlg.right - dlg.left, h = dlg.bottom - dlg.top;
+        int x = pt.x + 20, y = pt.y + 20;
+        if (x + w > work.right) x = work.right - w - 10;
+        if (y + h > work.bottom) y = work.bottom - h - 10;
+        SetWindowPos(hWnd, HWND_TOP, x, y, 0, 0, SWP_NOSIZE);
+        return TRUE;
+    }
+    case WM_COMMAND:
+        switch (LOWORD(wParam)) {
+        case IDC_TIMER_CHECK:
+            EnableWindow(GetDlgItem(hWnd, IDC_TIMER_EDIT), IsDlgButtonChecked(hWnd, IDC_TIMER_CHECK) == BST_CHECKED);
+            return TRUE;
+        case IDOK: {
+            BOOL ok = FALSE;
+            UINT secs = GetDlgItemInt(hWnd, IDC_TIMER_EDIT, &ok, FALSE);
+            if (!ok || secs < 1) secs = 1;
+            if (secs > 86400) secs = 86400;
+            g_timerSeconds = secs;
+            g_timerEnabled = IsDlgButtonChecked(hWnd, IDC_TIMER_CHECK) == BST_CHECKED;
+            SaveTimerSettings();
+            EndDialog(hWnd, IDOK);
+            return TRUE;
+        }
+        case IDCANCEL:
+            EndDialog(hWnd, IDCANCEL);
+            return TRUE;
+        }
+        break;
+    }
+    return FALSE;
+}
+
+void SetHideOnExec(bool enable) {
+    g_hideOnExec = enable;
+    if (enable && !g_hMouseHook)
+        g_hMouseHook = SetWindowsHookEx(WH_MOUSE_LL, LowLevelMouseProc, g_hInstance, 0);
+    else if (!enable && g_hMouseHook) {
+        UnhookWindowsHookEx(g_hMouseHook);
+        g_hMouseHook = nullptr;
+    }
+    SaveHideOnExec();
+}
+
 LRESULT CALLBACK LowLevelKeyboardProc(int nCode, WPARAM wParam, LPARAM lParam) {
     if (nCode == HC_ACTION) {
         KBDLLHOOKSTRUCT* pKeyInfo = (KBDLLHOOKSTRUCT*)lParam;
         bool isKeyDown = (wParam == WM_KEYDOWN || wParam == WM_SYSKEYDOWN);
+
+        // Hide on Exec: Enter pressed while the desktop has focus launches the selected icon
+        if (g_hideOnExec && isKeyDown && pKeyInfo->vkCode == VK_RETURN) {
+            wchar_t cls[32] = {};
+            GetClassName(GetForegroundWindow(), cls, 32);
+            if (wcscmp(cls, L"Progman") == 0 || wcscmp(cls, L"WorkerW") == 0) {
+                if (HWND hWnd = FindWindow(L"HideIconsTrayApp", nullptr))
+                    PostMessage(hWnd, WM_HIDEONEXEC_CLICK, (WPARAM)-1, (LPARAM)-1);
+            }
+        }
 
         // Check if the pressed key matches the hotkey
         if (isKeyDown && pKeyInfo->vkCode == g_hotkey.hotkey) {
@@ -535,6 +717,8 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam) 
             SetForegroundWindow(hWnd);
 
             CheckMenuItem(g_hMenu, 1, MF_BYCOMMAND | (g_isStartup ? MF_CHECKED : MF_UNCHECKED));
+            CheckMenuItem(g_hMenu, 8, MF_BYCOMMAND | (g_hideOnExec ? MF_CHECKED : MF_UNCHECKED));
+            CheckMenuItem(g_hMenu, 9, MF_BYCOMMAND | (g_timerEnabled ? MF_CHECKED : MF_UNCHECKED));
             TrackPopupMenu(g_hMenu, TPM_RIGHTBUTTON, pt.x, pt.y, 0, hWnd, nullptr);
         }
         else if (LOWORD(lParam) == WM_LBUTTONUP) {
@@ -565,6 +749,42 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam) 
         case 7:
             SendMessage(hWnd, WM_CLOSE, 0, 0);
             break;
+        case 8:
+            SetHideOnExec(!g_hideOnExec);
+            break;
+        case 9:
+            if (DialogBox(g_hInstance, MAKEINTRESOURCE(IDD_TIMER_DIALOG), hWnd, TimerDialogProc) == IDOK)
+                ApplyTimerSetting(hWnd);
+            break;
+        }
+        break;
+
+    case WM_HIDEONEXEC_CLICK:
+        if (g_hideOnExec && AreDesktopIconsVisible()) {
+            POINT pt = { (LONG)(int)wParam, (LONG)(int)lParam };
+            bool fromKeyboard = ((int)wParam == -1 && (int)lParam == -1);
+            if (fromKeyboard || IsDesktopItemAt(pt))
+                SetTimer(hWnd, HIDEONEXEC_TIMER, 300, nullptr); // small delay so the launch is not disturbed
+        }
+        break;
+
+    case WM_TIMER:
+        if (wParam == COUNTDOWN_TIMER) {
+            if (!g_timerEnabled || !AreDesktopIconsVisible()) {
+                g_visibleSinceTick = 0;               // icons hidden: reset countdown
+            }
+            else if (g_visibleSinceTick == 0) {
+                g_visibleSinceTick = GetTickCount();  // icons just became visible: start countdown
+            }
+            else if (GetTickCount() - g_visibleSinceTick >= g_timerSeconds * 1000) {
+                g_visibleSinceTick = 0;
+                ToggleDesktopIcons();
+            }
+        }
+        else if (wParam == HIDEONEXEC_TIMER) {
+            KillTimer(hWnd, HIDEONEXEC_TIMER);
+            if (g_hideOnExec && AreDesktopIconsVisible())
+                ToggleDesktopIcons();
         }
         break;
 
@@ -584,7 +804,7 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam) 
 }
 
 int APIENTRY wWinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE hPrevInstance, _In_ LPWSTR lpCmdLine, _In_ int nCmdShow) {
-    Updater updater(WCharToString(APP_VERSION), "emp0ry", "Hide-Icons", "HideIcons");
+    Updater updater(WCharToString(APP_VERSION), "Thermoptic", "Hide-Icons-Plus", "HideIcons");
     if (updater.checkAndUpdate())
         return 0;
 
@@ -611,6 +831,9 @@ int APIENTRY wWinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE hPrevInstance
 
     g_hotkey = LoadHotkey();
     InstallKeyboardHook();
+    SetHideOnExec(LoadHideOnExec());
+    LoadTimerSettings();
+    ApplyTimerSetting(hWnd);
     CreateTrayIcon(hWnd);
 
     g_hMenu = CreatePopupMenu();
@@ -621,6 +844,9 @@ int APIENTRY wWinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE hPrevInstance
     AppendMenu(g_hMenu, MF_SEPARATOR, 0, nullptr);
     AppendMenu(g_hMenu, MF_STRING, 4, L"Set Hotkey");
     AppendMenu(g_hMenu, MF_STRING, 5, L"Remove Hotkey");
+    AppendMenu(g_hMenu, MF_SEPARATOR, 0, nullptr);
+    AppendMenu(g_hMenu, MF_STRING, 8, L"Hide on Exec");
+    AppendMenu(g_hMenu, MF_STRING, 9, L"Timer");
     AppendMenu(g_hMenu, MF_SEPARATOR, 0, nullptr);
     AppendMenu(g_hMenu, MF_STRING, 6, L"About");
     AppendMenu(g_hMenu, MF_SEPARATOR, 0, nullptr);
@@ -634,5 +860,6 @@ int APIENTRY wWinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE hPrevInstance
 
     DestroyMenu(g_hMenu);
     UninstallKeyboardHook();
+    if (g_hMouseHook) UnhookWindowsHookEx(g_hMouseHook);
     return 0;
 }
