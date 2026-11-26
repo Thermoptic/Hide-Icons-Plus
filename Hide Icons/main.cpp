@@ -243,8 +243,11 @@ LRESULT CALLBACK HotkeyDialogProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM
             break;
 
         case IDC_CLEAR_BUTTON:
-            // Clear the hotkey control
+            // Remove Hotkey: clear the control, drop the hotkey and close (SetHotkey saves it)
             SendDlgItemMessage(hWnd, IDC_HOTKEY_EDIT, HKM_SETHOTKEY, 0, 0);
+            g_hotkey.hotkey = 0;
+            g_hotkey.modifier = 0;
+            EndDialog(hWnd, IDOK);
             break;
         }
         break;
@@ -262,14 +265,6 @@ void SetHotkey(HWND hWnd) {
             SaveHotkey(g_hotkey);
         }
     }
-}
-
-// Function to remove hotkey
-void RemoveHotkey(HWND hWnd) {
-    g_hotkey.hotkey = 0;
-    g_hotkey.modifier = 0;
-
-    SaveHotkey(g_hotkey); // save settings
 }
 
 // Function to get the current Windows theme (light or dark)
@@ -486,31 +481,32 @@ bool LoadHideWindows() {
         RRF_RT_REG_DWORD, nullptr, &v, &size) == ERROR_SUCCESS && v != 0;
 }
 
-// Function to change the tray icon
-void ChangeTrayIcon() {
+// Browse for an .ico file; returns true and fills 'out' if the user picked one
+static bool BrowseForIcon(HWND owner, std::wstring& out) {
     wchar_t filePath[MAX_PATH];
     OPENFILENAME ofn = {};
     ofn.lStructSize = sizeof(OPENFILENAME);
-    ofn.hwndOwner = nullptr;
+    ofn.hwndOwner = owner;
     ofn.lpstrFilter = L"Icon Files\0*.ico\0All Files\0*.*\0";
     ofn.lpstrFile = filePath;
     ofn.nMaxFile = MAX_PATH;
     ofn.Flags = OFN_FILEMUSTEXIST | OFN_PATHMUSTEXIST;
     ofn.lpstrTitle = L"Select a New Tray Icon";
-
     filePath[0] = '\0';
 
-    if (GetOpenFileName(&ofn)) {
-        HICON hNewIcon = (HICON)LoadImage(nullptr, filePath, IMAGE_ICON, 0, 0, LR_LOADFROMFILE | LR_DEFAULTSIZE);
-        if (hNewIcon) {
-            g_nid.hIcon = hNewIcon;
-            Shell_NotifyIcon(NIM_MODIFY, &g_nid);
-            SaveCustomIconPath(filePath);
-        }
-        else {
-            MessageBox(nullptr, L"Failed to load the icon.", L"Error", MB_ICONERROR);
-        }
-    }
+    if (!GetOpenFileName(&ofn)) return false;
+    out = filePath;
+    return true;
+}
+
+// Apply an .ico file as the tray icon and remember it
+static bool ApplyCustomIcon(const wchar_t* filePath) {
+    HICON hNewIcon = (HICON)LoadImage(nullptr, filePath, IMAGE_ICON, 0, 0, LR_LOADFROMFILE | LR_DEFAULTSIZE);
+    if (!hNewIcon) return false;
+    g_nid.hIcon = hNewIcon;
+    Shell_NotifyIcon(NIM_MODIFY, &g_nid);
+    SaveCustomIconPath(filePath);
+    return true;
 }
 
 // Function to check taskbar theme and update icon color
@@ -528,6 +524,58 @@ void ResetTrayIcon() {
     g_nid.hIcon = IsTaskbarDarkMode() ? hWhiteIcon : hBlackIcon;
     Shell_NotifyIcon(NIM_MODIFY, &g_nid);
     SaveCustomIconPath(L""); // Clear the custom icon path
+}
+
+// "Change Icon" dialog: Browse for an .ico, Apply it, or Reset to the default icon
+static std::wstring g_pendingIcon;
+
+INT_PTR CALLBACK IconDialogProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM) {
+    switch (message) {
+    case WM_INITDIALOG: {
+        g_pendingIcon.clear();
+        std::wstring current;
+        if (LoadCustomIconPath(current) && !current.empty())
+            SetDlgItemText(hWnd, IDC_ICON_PATH, current.c_str());
+
+        POINT pt; GetCursorPos(&pt);
+        RECT work, dlg;
+        SystemParametersInfo(SPI_GETWORKAREA, 0, &work, 0);
+        GetWindowRect(hWnd, &dlg);
+        int w = dlg.right - dlg.left, h = dlg.bottom - dlg.top;
+        int x = pt.x + 20, y = pt.y + 20;
+        if (x + w > work.right) x = work.right - w - 10;
+        if (y + h > work.bottom) y = work.bottom - h - 10;
+        SetWindowPos(hWnd, HWND_TOP, x, y, 0, 0, SWP_NOSIZE);
+        return TRUE;
+    }
+    case WM_COMMAND:
+        switch (LOWORD(wParam)) {
+        case IDC_ICON_BROWSE: {
+            std::wstring path;
+            if (BrowseForIcon(hWnd, path)) {
+                g_pendingIcon = path;
+                SetDlgItemText(hWnd, IDC_ICON_PATH, path.c_str());
+            }
+            return TRUE;
+        }
+        case IDOK:
+            if (!g_pendingIcon.empty() && !ApplyCustomIcon(g_pendingIcon.c_str())) {
+                MessageBox(hWnd, L"Failed to load the icon.", L"Error", MB_ICONERROR);
+                return TRUE;   // keep the dialog open
+            }
+            EndDialog(hWnd, IDOK);
+            return TRUE;
+        case IDC_ICON_RESET:
+            ResetTrayIcon();
+            EndDialog(hWnd, IDOK);
+            return TRUE;
+        case IDCANCEL:
+            EndDialog(hWnd, IDCANCEL);
+            return TRUE;
+        }
+        break;
+    }
+    return FALSE;
 }
 
 // Function to create a system tray icon
@@ -816,16 +864,10 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam) 
             ToggleStartup();
             break;
         case 2:
-            ChangeTrayIcon();
-            break;
-        case 3:
-            ResetTrayIcon();
+            DialogBox(g_hInstance, MAKEINTRESOURCE(IDD_ICON_DIALOG), hWnd, IconDialogProc);
             break;
         case 4:
             SetHotkey(hWnd);
-            break;
-        case 5:
-            RemoveHotkey(hWnd);
             break;
         case 6:
             DialogBox(g_hInstance, MAKEINTRESOURCE(IDD_ABOUT_DIALOG), hWnd, AboutDialogProc);
@@ -932,10 +974,8 @@ int APIENTRY wWinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE hPrevInstance
     AppendMenu(g_hMenu, MF_STRING, 1, L"Run at Startup");
     AppendMenu(g_hMenu, MF_SEPARATOR, 0, nullptr);
     AppendMenu(g_hMenu, MF_STRING, 2, L"Change Icon");
-    AppendMenu(g_hMenu, MF_STRING, 3, L"Reset Icon");
     AppendMenu(g_hMenu, MF_SEPARATOR, 0, nullptr);
     AppendMenu(g_hMenu, MF_STRING, 4, L"Set Hotkey");
-    AppendMenu(g_hMenu, MF_STRING, 5, L"Remove Hotkey");
     AppendMenu(g_hMenu, MF_SEPARATOR, 0, nullptr);
     AppendMenu(g_hMenu, MF_STRING, 8, L"Hide on Exec");
     AppendMenu(g_hMenu, MF_STRING, 9, L"Timer");

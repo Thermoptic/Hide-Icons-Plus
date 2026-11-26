@@ -77,9 +77,9 @@ The built-in auto-updater now checks **this repository's** [Releases](https://gi
 ## 🧭 Usage
 - **Toggle icons**: Left-click the tray icon.
 - **Set hotkey**: Right-click → **Set Hotkey** → choose a shortcut.
-Remove via **Remove Hotkey**.
+Remove it with the **Remove Hotkey** button inside the same window.
 - **Auto-start**: Right-click → **Run at Startup**.
-- **Custom icon**: Right-click → **Change Icon** / **Reset Icon**.
+- **Custom icon**: Right-click → **Change Icon** → **Browse** for an `.ico` file (the path is shown next to the button) → **Apply**, or press **Reset Icon** in the same window to restore the default.
 - **Hide on Exec** *(Plus)*: Right-click → **Hide on Exec**.
 - **Countdown Timer** *(Plus)*: Right-click → **Timer** → tick **Countdown Timer** → set seconds → **OK**.
 - **Hide Windows** *(Plus)*: Right-click → **Hide Windows**.
