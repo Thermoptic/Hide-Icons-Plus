@@ -11,6 +11,8 @@
 #define IDC_HOTKEY_EDIT                2001
 #define IDC_CLEAR_BUTTON               2004
 #define IDD_TIMER_DIALOG               106
+#define IDD_ABOUT_DIALOG               107
+#define IDC_ABOUT_TITLE                2020
 #define IDC_TIMER_CHECK                2010
 #define IDC_TIMER_EDIT                 2011
 

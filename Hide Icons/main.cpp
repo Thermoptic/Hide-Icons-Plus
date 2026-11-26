@@ -671,6 +671,21 @@ INT_PTR CALLBACK TimerDialogProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM 
     return FALSE;
 }
 
+INT_PTR CALLBACK AboutDialogProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM) {
+    switch (message) {
+    case WM_INITDIALOG:
+        SetDlgItemText(hWnd, IDC_ABOUT_TITLE, (L"Hide Icons Plus " + std::wstring(APP_VERSION)).c_str());
+        return TRUE;
+    case WM_COMMAND:
+        if (LOWORD(wParam) == IDOK || LOWORD(wParam) == IDCANCEL) {
+            EndDialog(hWnd, IDOK);
+            return TRUE;
+        }
+        break;
+    }
+    return FALSE;
+}
+
 void SetHideOnExec(bool enable) {
     g_hideOnExec = enable;
     if (enable && !g_hMouseHook)
@@ -813,7 +828,7 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam) 
             RemoveHotkey(hWnd);
             break;
         case 6:
-            MessageBox(hWnd, (L"Hide Icons " + std::wstring(APP_VERSION) + L"\nCreated by emp0ry").c_str(), L"About", MB_OK | MB_ICONINFORMATION);
+            DialogBox(g_hInstance, MAKEINTRESOURCE(IDD_ABOUT_DIALOG), hWnd, AboutDialogProc);
             break;
         case 7:
             SendMessage(hWnd, WM_CLOSE, 0, 0);
