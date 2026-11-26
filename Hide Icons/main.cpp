@@ -15,6 +15,7 @@
 #include <ole2.h>
 #pragma comment(lib, "Ole32.lib")
 #pragma comment(lib, "OleAut32.lib")
+#include <shldisp.h>
 #include <oleacc.h>
 #pragma comment(lib, "oleacc.lib")
 
@@ -36,6 +37,12 @@ HHOOK g_hMouseHook = nullptr;
 const UINT WM_HIDEONEXEC_CLICK = WM_APP + 2;   // posted by the mouse hook on a desktop double-click
 const UINT_PTR HIDEONEXEC_TIMER = 100;
 const wchar_t* HIDE_ON_EXEC_VALUE_NAME = L"HideOnExec";
+
+// Hide Windows: minimize all windows (like Win+D) together with showing the icons
+bool g_hideWindows = false;
+bool g_windowsHidden = false;          // true while we have minimized the windows ourselves
+const UINT WM_TOGGLE_REQUEST = WM_APP + 3;     // posted by the keyboard hook for the hotkey
+const wchar_t* HIDE_WINDOWS_VALUE_NAME = L"HideWindows";
 
 // Countdown timer: hide icons automatically after N seconds of being visible
 bool g_timerEnabled = false;
@@ -423,6 +430,62 @@ void ToggleDesktopIcons() {
     PostMessage(defView, WM_COMMAND, 29698, 0);
 }
 
+// Same as pressing Win+D: minimizes all windows, or restores them if they were minimized by it
+static void ToggleWindowsDesktop() {
+    HRESULT hr = CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
+    bool needUninit = SUCCEEDED(hr);
+    IShellDispatch4* psd = nullptr;
+    if (SUCCEEDED(CoCreateInstance(CLSID_Shell, nullptr, CLSCTX_ALL, IID_PPV_ARGS(&psd))) && psd) {
+        psd->ToggleDesktop();
+        psd->Release();
+    }
+    if (needUninit) CoUninitialize();
+}
+
+// Show icons (+ minimize windows if "Hide Windows" is on), or hide icons (+ restore windows)
+static void ToggleAll() {
+    if (!g_hideWindows) {
+        ToggleDesktopIcons();
+        return;
+    }
+    if (AreDesktopIconsVisible()) {
+        ToggleDesktopIcons();                       // hide icons
+        if (g_windowsHidden) {                      // bring the windows back
+            ToggleWindowsDesktop();
+            g_windowsHidden = false;
+        }
+    }
+    else {
+        ToggleDesktopIcons();                       // show icons
+        ToggleWindowsDesktop();                     // minimize all windows
+        g_windowsHidden = true;
+    }
+}
+
+// Hide icons automatically (timer): also restores windows if we minimized them
+static void HideAllAuto() {
+    if (g_hideWindows && g_windowsHidden) {
+        ToggleWindowsDesktop();
+        g_windowsHidden = false;
+    }
+    if (AreDesktopIconsVisible()) ToggleDesktopIcons();
+}
+
+void SaveHideWindows() {
+    HKEY key;
+    if (RegCreateKeyEx(HKEY_CURRENT_USER, SETTINGS_REG_PATH, 0, nullptr, 0, KEY_WRITE, nullptr, &key, nullptr) == ERROR_SUCCESS) {
+        DWORD v = g_hideWindows ? 1 : 0;
+        RegSetValueEx(key, HIDE_WINDOWS_VALUE_NAME, 0, REG_DWORD, (const BYTE*)&v, sizeof(v));
+        RegCloseKey(key);
+    }
+}
+
+bool LoadHideWindows() {
+    DWORD v = 0, size = sizeof(v);
+    return RegGetValueW(HKEY_CURRENT_USER, SETTINGS_REG_PATH, HIDE_WINDOWS_VALUE_NAME,
+        RRF_RT_REG_DWORD, nullptr, &v, &size) == ERROR_SUCCESS && v != 0;
+}
+
 // Function to change the tray icon
 void ChangeTrayIcon() {
     wchar_t filePath[MAX_PATH];
@@ -646,8 +709,9 @@ LRESULT CALLBACK LowLevelKeyboardProc(int nCode, WPARAM wParam, LPARAM lParam) {
                 (g_hotkey.modifier & MOD_SHIFT) == (shiftPressed ? MOD_SHIFT : 0) &&
                 (g_hotkey.modifier & MOD_ALT) == (altPressed ? MOD_ALT : 0))
             {
-                // Trigger Hide Icons app action
-                ToggleDesktopIcons();
+                // Trigger Hide Icons app action (handled on the main thread, not inside the hook)
+                if (HWND hWnd = FindWindow(L"HideIconsTrayApp", nullptr))
+                    PostMessage(hWnd, WM_TOGGLE_REQUEST, 0, 0);
             }
         }
     }
@@ -719,11 +783,16 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam) 
             CheckMenuItem(g_hMenu, 1, MF_BYCOMMAND | (g_isStartup ? MF_CHECKED : MF_UNCHECKED));
             CheckMenuItem(g_hMenu, 8, MF_BYCOMMAND | (g_hideOnExec ? MF_CHECKED : MF_UNCHECKED));
             CheckMenuItem(g_hMenu, 9, MF_BYCOMMAND | (g_timerEnabled ? MF_CHECKED : MF_UNCHECKED));
+            CheckMenuItem(g_hMenu, 10, MF_BYCOMMAND | (g_hideWindows ? MF_CHECKED : MF_UNCHECKED));
             TrackPopupMenu(g_hMenu, TPM_RIGHTBUTTON, pt.x, pt.y, 0, hWnd, nullptr);
         }
         else if (LOWORD(lParam) == WM_LBUTTONUP) {
-            ToggleDesktopIcons();
+            ToggleAll();
         }
+        break;
+
+    case WM_TOGGLE_REQUEST:
+        ToggleAll();
         break;
 
     case WM_COMMAND:
@@ -752,6 +821,11 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam) 
         case 8:
             SetHideOnExec(!g_hideOnExec);
             break;
+        case 10:
+            g_hideWindows = !g_hideWindows;
+            g_windowsHidden = false;
+            SaveHideWindows();
+            break;
         case 9:
             if (DialogBox(g_hInstance, MAKEINTRESOURCE(IDD_TIMER_DIALOG), hWnd, TimerDialogProc) == IDOK)
                 ApplyTimerSetting(hWnd);
@@ -778,13 +852,15 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam) 
             }
             else if (GetTickCount() - g_visibleSinceTick >= g_timerSeconds * 1000) {
                 g_visibleSinceTick = 0;
-                ToggleDesktopIcons();
+                HideAllAuto();
             }
         }
         else if (wParam == HIDEONEXEC_TIMER) {
             KillTimer(hWnd, HIDEONEXEC_TIMER);
-            if (g_hideOnExec && AreDesktopIconsVisible())
+            if (g_hideOnExec && AreDesktopIconsVisible()) {
+                g_windowsHidden = false;   // a program was just launched; don't restore the old windows over it
                 ToggleDesktopIcons();
+            }
         }
         break;
 
@@ -834,6 +910,7 @@ int APIENTRY wWinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE hPrevInstance
     SetHideOnExec(LoadHideOnExec());
     LoadTimerSettings();
     ApplyTimerSetting(hWnd);
+    g_hideWindows = LoadHideWindows();
     CreateTrayIcon(hWnd);
 
     g_hMenu = CreatePopupMenu();
@@ -847,6 +924,7 @@ int APIENTRY wWinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE hPrevInstance
     AppendMenu(g_hMenu, MF_SEPARATOR, 0, nullptr);
     AppendMenu(g_hMenu, MF_STRING, 8, L"Hide on Exec");
     AppendMenu(g_hMenu, MF_STRING, 9, L"Timer");
+    AppendMenu(g_hMenu, MF_STRING, 10, L"Hide Windows");
     AppendMenu(g_hMenu, MF_SEPARATOR, 0, nullptr);
     AppendMenu(g_hMenu, MF_STRING, 6, L"About");
     AppendMenu(g_hMenu, MF_SEPARATOR, 0, nullptr);

@@ -17,6 +17,16 @@ These features are **new in the Hide-Icons-Plus version** and do not exist in th
 | 🚀 **Hide on Exec** | Right-click tray icon → **Hide on Exec** (checkable) | When desktop icons are visible and you launch something from the desktop — by **double-clicking an icon** or pressing **Enter** on a selected one — the icons are hidden again automatically. |
 | ⏱️ **Countdown Timer** | Right-click tray icon → **Timer** | Opens a small window where you tick **Countdown Timer** and choose a number of **Seconds** (default **30**). Whenever the icons are shown, they are hidden automatically once the time runs out. |
 
+| 🪟 **Hide Windows** | Right-click tray icon → **Hide Windows** (checkable) | Works like **Win + D**: clicking the tray icon shows the desktop icons **and** minimizes all open windows. Click again to hide the icons and restore every window as it was. |
+
+### 🪟 Hide Windows
+- Enable it from the tray menu; a ✔ appears next to **Hide Windows** while it is active.
+- **Icons hidden → click:** icons appear and all windows are minimized (just like Win + D).
+- **Icons visible → click:** icons are hidden and your windows are restored.
+- Also applies to your global hotkey, which behaves the same as clicking the tray icon.
+- Combines with **Timer**: when the countdown ends, icons are hidden and the windows come back.
+- The setting is remembered between restarts.
+
 ### 🚀 Hide on Exec
 - Enable it from the tray menu; a ✔ appears next to **Hide on Exec** while it is active.
 - Double-clicking empty desktop space does **not** trigger it — only real icons do.
@@ -42,6 +52,7 @@ The built-in auto-updater now checks **this repository's** [Releases](https://gi
 - **Auto-update** – Checks and updates on app start.
 - **Hide on Exec** *(new in Plus)* – Auto-hide icons after launching something from the desktop.
 - **Countdown Timer** *(new in Plus)* – Auto-hide icons after a configurable number of seconds.
+- **Hide Windows** *(new in Plus)* – Minimize/restore all windows together with the icons, like Win + D.
 - **No hacks** – Uses the desktop's own command (no poking SysListView32), works on Win10/11.
 
 ## 💻 System Requirements
@@ -67,6 +78,7 @@ Remove via **Remove Hotkey**.
 - **Custom icon**: Right-click → **Change Icon** / **Reset Icon**.
 - **Hide on Exec** *(Plus)*: Right-click → **Hide on Exec**.
 - **Countdown Timer** *(Plus)*: Right-click → **Timer** → tick **Countdown Timer** → set seconds → **OK**.
+- **Hide Windows** *(Plus)*: Right-click → **Hide Windows**.
 
 ## 🤝 Contributing
 Issues and PRs are welcome! Please describe the environment (Windows version, steps to reproduce) when filing bugs.
