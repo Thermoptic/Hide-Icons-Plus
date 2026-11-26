@@ -53,7 +53,7 @@ const wchar_t* TIMER_ENABLED_VALUE_NAME = L"TimerEnabled";
 const wchar_t* TIMER_SECONDS_VALUE_NAME = L"TimerSeconds";
 
 const wchar_t* APP_NAME = L"Hide Icons";
-const wchar_t* APP_VERSION = L"v1.8.1";
+const wchar_t* APP_VERSION = L"v1.9.0";
 
 // Registry keys
 const wchar_t* REG_PATH = L"SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Run";
