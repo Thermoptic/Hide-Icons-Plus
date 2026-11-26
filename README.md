@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="IconDesign/monitor_salmon_64x64_4x.png" alt="Hide Icons Plus" width="256" height="256">
+</p>
+
 # Hide Icons Plus 🖥️✨
 
 [![Latest Version](https://img.shields.io/github/v/release/Thermoptic/Hide-Icons-Plus?label=Latest%20Version&style=flat-square&color=8b5cf6)](https://github.com/Thermoptic/Hide-Icons-Plus/releases/latest)
