@@ -16,8 +16,8 @@ These features are **new in the Hide-Icons-Plus version** and do not exist in th
 |---|---|---|
 | 🚀 **Hide on Exec** | Right-click tray icon → **Hide on Exec** (checkable) | When desktop icons are visible and you launch something from the desktop — by **double-clicking an icon** or pressing **Enter** on a selected one — the icons are hidden again automatically. |
 | ⏱️ **Countdown Timer** | Right-click tray icon → **Timer** | Opens a small window where you tick **Countdown Timer** and choose a number of **Seconds** (default **30**). Whenever the icons are shown, they are hidden automatically once the time runs out. |
-
 | 🪟 **Hide Windows** | Right-click tray icon → **Hide Windows** (checkable) | Works like **Win + D**: clicking the tray icon shows the desktop icons **and** minimizes all open windows. Click again to hide the icons and restore every window as it was. |
+| ℹ️ **Redesigned About window** | Right-click tray icon → **About** | A clean, wide window showing the version and a one-line explanation of every menu option. |
 
 ### 🪟 Hide Windows
 - Enable it from the tray menu; a ✔ appears next to **Hide Windows** while it is active.
@@ -40,6 +40,9 @@ These features are **new in the Hide-Icons-Plus version** and do not exist in th
 - Works together with **Hide on Exec**: whichever happens first hides the icons.
 - Settings are remembered between restarts.
 
+### ℹ️ About window
+Shows the app version and credits at the top, followed by a short one-sentence description of each tray menu option (toggle, startup, icons, hotkey, Hide on Exec, Timer, Hide Windows, Exit).
+
 ### 🔄 Updates
 The built-in auto-updater now checks **this repository's** [Releases](https://github.com/Thermoptic/Hide-Icons-Plus/releases), so you always get the Plus version.
 
@@ -53,6 +56,7 @@ The built-in auto-updater now checks **this repository's** [Releases](https://gi
 - **Hide on Exec** *(new in Plus)* – Auto-hide icons after launching something from the desktop.
 - **Countdown Timer** *(new in Plus)* – Auto-hide icons after a configurable number of seconds.
 - **Hide Windows** *(new in Plus)* – Minimize/restore all windows together with the icons, like Win + D.
+- **Redesigned About window** *(new in Plus)* – Version info plus a one-line explanation of every option.
 - **No hacks** – Uses the desktop's own command (no poking SysListView32), works on Win10/11.
 
 ## 💻 System Requirements
